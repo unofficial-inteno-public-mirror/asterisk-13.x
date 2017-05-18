@@ -66,3 +66,19 @@ chan_usbradio.o: ./xpmr/xpmr.c ./xpmr/xpmr.h ./xpmr/xpmr_coef.h
 chan_usbradio.so: LIBS+=-lusb -lasound
 chan_usbradio.so: _ASTCFLAGS+=-DNDEBUG
 
+chan_brcm_dect.o chan_brcm.o: _ASTCFLAGS+= \
+	-I$(STAGING_DIR)/usr/include/natalie-dect/ \
+	-I$(STAGING_DIR)/usr/include/natalie-dect/Phoenix  \
+	-DRS_ENDIAN_TYPE=RS_BIG_ENDIAN \
+	-I$(STAGING_DIR)/usr/include/bcm963xx/bcmdrivers/broadcom/include/bcm963xx/ \
+	-I$(STAGING_DIR)/usr/include/bcm963xx/bcmdrivers/opensource/include/bcm963xx/ \
+	-I$(STAGING_DIR)/usr/include/bcm963xx/xChange/dslx_common/voice_res_gw/endpt/inc/ \
+	-I$(STAGING_DIR)/usr/include/bcm963xx/xChange/dslx_common/voice_res_gw/inc \
+	-I$(STAGING_DIR)/usr/include/bcm963xx/xChange/dslx_common/voice_res_gw/codec \
+	-I$(STAGING_DIR)/usr/include/bcm963xx/xChange/dslx_common/xchg_common/bos/publicInc/ \
+	-I$(STAGING_DIR)/usr/include/bcm963xx/xChange/dslx_common/voice_res_gw/casCtl/inc/ \
+	-I$(STAGING_DIR)/usr/include/bcm963xx/xChange/dslx_common/xchg_drivers/inc \
+	-DBOS_OS_LINUXUSER -DBOS_CFG_TIME -DNTR_SUPPORT \
+
+chan_brcm.so: LIBS+=-lubus -lubox
+$(if $(filter chan_brcm,$(EMBEDDED_MODS)),modules.link,chan_brcm.so): chan_brcm.o chan_brcm_dect.o
