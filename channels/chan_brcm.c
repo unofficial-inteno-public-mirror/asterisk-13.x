@@ -123,7 +123,7 @@ static int num_dect_endpoints = -1;
 static int num_endpoints = -1;
 static int endpoint_fd = NOT_INITIALIZED;
 static int clip = 1; // Caller ID presentation
-//static const struct ast_format_cap default_capability = AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G729A | AST_FORMAT_G726 | AST_FORMAT_G722; // AST_FORMAT_G723_1 breaks stuff
+//static const struct ast_format_cap default_capability = AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G729 | AST_FORMAT_G726 | AST_FORMAT_G722; // AST_FORMAT_G723 breaks stuff
 struct ast_sched_thread *sched; //Scheduling thread
 static int pcmShimFile = -1;
 
@@ -818,7 +818,7 @@ static int brcm_hangup(struct ast_channel *ast)
 	sub->cw_rejected = 0;
 	ast_module_unref(ast_module_info->self);
 	ast_verb(3, "Hungup '%s'\n", ast_channel_name(ast));
-	ast_channel_tech_pvt(ast) = NULL;
+	ast_channel_tech_pvt_set(ast, NULL);
 	brcm_close_connection(sub);
 	//ast_mutex_unlock(&p->lock);
 
@@ -838,7 +838,7 @@ static int brcm_answer(struct ast_channel *ast)
 		ast_setstate(ast, AST_STATE_UP);
 		ast_debug(2, "brcm_answer(%s) set state to up\n", ast_channel_name(ast));
 	}
-	ast->rings = 0;
+	ast_channel_rings_set(ast, 0);
 	brcm_subchannel_set_state(sub, INCALL);
 	//ast_mutex_unlock(&sub->parent->lock);
 	pvt_unlock(sub->parent);
@@ -868,9 +868,9 @@ static int map_rtp_to_ast_codec_id(int id) {
 	switch (id) {
 		case PCMU: return AST_FORMAT_ULAW;
 		case G726: return AST_FORMAT_G726;
-		case G723: return AST_FORMAT_G723_1;
+		case G723: return AST_FORMAT_G723;
 		case PCMA: return AST_FORMAT_ALAW;
-		case G729: return AST_FORMAT_G729A;
+		case G729: return AST_FORMAT_G729;
 		case G722: return AST_FORMAT_G722;
 		default:
 		{
@@ -900,9 +900,9 @@ static int map_ast_codec_id_to_rtp(int id) {
 	switch (id) {
 		case AST_FORMAT_ULAW: return PCMU;
 		case AST_FORMAT_G726: return G726;
-		case AST_FORMAT_G723_1: return G723;
+		case AST_FORMAT_G723: return G723;
 		case AST_FORMAT_ALAW: return PCMA;
-		case AST_FORMAT_G729A: return G729;
+		case AST_FORMAT_G729: return G729;
 		case AST_FORMAT_G722: return G722;
 		default:
 		{
@@ -919,10 +919,10 @@ static ast_format map_codec_brcm_to_ast(int id) {
 	switch (id) {
 		case CODEC_PCMU:		return AST_FORMAT_ULAW;
 		case CODEC_PCMA:		return AST_FORMAT_ALAW;
-		case CODEC_G7231_53:	return AST_FORMAT_G723_1;
-		case CODEC_G7231_63:	return AST_FORMAT_G723_1;
+		case CODEC_G7231_53:	return AST_FORMAT_G723;
+		case CODEC_G7231_63:	return AST_FORMAT_G723;
 		case CODEC_G726_32:		return AST_FORMAT_G726;
-		case CODEC_G729A:		return AST_FORMAT_G729A;
+		case CODEC_G729A:		return AST_FORMAT_G729;
 		case CODEC_G722_MODE_1:	return AST_FORMAT_G722;
 		default:				return -1;
 	}
@@ -932,9 +932,9 @@ static int map_codec_ast_to_brcm(int id) {
 	switch (id) {
 		case AST_FORMAT_ULAW:	return CODEC_PCMU;
 		case AST_FORMAT_ALAW:	return CODEC_PCMA;
-		case AST_FORMAT_G723_1:	return CODEC_G7231_63; //Asterisk does not indicate which bitrate to use
+		case AST_FORMAT_G723:	return CODEC_G7231_63; //Asterisk does not indicate which bitrate to use
 		case AST_FORMAT_G726:	return CODEC_G726_32; //32 is the only supported bitrate in asterisk
-		case AST_FORMAT_G729A:	return CODEC_G729A;
+		case AST_FORMAT_G729:	return CODEC_G729A;
 		case AST_FORMAT_G722:	return CODEC_G722_MODE_1;
 		default:				return -1;
 	}
@@ -949,9 +949,9 @@ static int map_codec_ast_to_brcm_rtp(int id) {
 	switch (id) {
 		case AST_FORMAT_ULAW:	return RTP_PAYLOAD_PCMU;
 		case AST_FORMAT_ALAW:	return RTP_PAYLOAD_PCMA;
-		case AST_FORMAT_G723_1:	return RTP_PAYLOAD_G723;
+		case AST_FORMAT_G723:	return RTP_PAYLOAD_G723;
 		case AST_FORMAT_G726:	return RTP_PAYLOAD_G726_32; //32 is the only supported bitrate in asterisk
-		case AST_FORMAT_G729A:	return RTP_PAYLOAD_G729;
+		case AST_FORMAT_G729:	return RTP_PAYLOAD_G729;
 		case AST_FORMAT_G722:	return RTP_PAYLOAD_G722;
 		default:				return -1;
 	}
@@ -2087,11 +2087,11 @@ static void *brcm_monitor_packets(void *data)
 						fr.samples = 160; //for 20 ms frame size
 						break;
 					case G723:
-						fr.subclass.codec = AST_FORMAT_G723_1;
+						fr.subclass.codec = AST_FORMAT_G723;
 						fr.samples = 240;
 						break;
 					case G729:
-						fr.subclass.codec = AST_FORMAT_G729A;
+						fr.subclass.codec = AST_FORMAT_G729;
 						fr.samples = 80; //for 10 ms frame size
 						break;
 					case G722:
@@ -2838,7 +2838,7 @@ static struct ast_channel *brcm_request(const char *type, struct ast_format_cap 
 	sub = brcm_get_idle_subchannel(p);
 
 	/* Check that the request has an allowed format */
-	ast_format_cap allowedformat = format & (AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G729A | AST_FORMAT_G726 | AST_FORMAT_G723_1 | AST_FORMAT_G722);
+	ast_format_cap allowedformat = format & (AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G729 | AST_FORMAT_G726 | AST_FORMAT_G723 | AST_FORMAT_G722);
 
 	if (!allowedformat) {
 		ast_log(LOG_NOTICE, "Asked to get a channel of unsupported format %s\n", ast_getformatname(format));
@@ -3704,11 +3704,11 @@ static void line_settings_load(line_settings *line_config, struct ast_variable *
 			} else if (!strcasecmp(v->value, "g729")) {
 				line_config->codec_list[config_codecs] = CODEC_G729A;
 				line_config->rtp_payload_list[config_codecs++] = RTP_PAYLOAD_G729;
-				line_config->capability = line_config->capability | AST_FORMAT_G729A;
+				line_config->capability = line_config->capability | AST_FORMAT_G729;
 			} else if (!strcasecmp(v->value, "g723")) {
 				line_config->codec_list[config_codecs] = CODEC_G7231_63;
 				line_config->rtp_payload_list[config_codecs++] = RTP_PAYLOAD_G723;
-				line_config->capability = line_config->capability | AST_FORMAT_G723_1;
+				line_config->capability = line_config->capability | AST_FORMAT_G723;
 			} else if (!strcasecmp(v->value, "g726")) {
 				line_config->codec_list[config_codecs] = CODEC_G726_32;
 				line_config->rtp_payload_list[config_codecs++] = RTP_PAYLOAD_G726_32;
