@@ -729,7 +729,7 @@ static int brcm_call(struct ast_channel *chan, char *dest, int timeout)
 	}
 	else if (!brcm_subchannel_is_idle(sub_peer)) {
 		ast_debug(1, "Line is busy\n");
-		chan->hangupcause = AST_CAUSE_USER_BUSY;
+		ast_channel_hangupsource(chan) = AST_CAUSE_USER_BUSY;
 		ast_queue_control(chan, AST_CONTROL_BUSY);
 	}
 	else {
@@ -817,7 +817,7 @@ static int brcm_hangup(struct ast_channel *ast)
 	sub->conference_initiator = 0;
 	sub->cw_rejected = 0;
 	ast_module_unref(ast_module_info->self);
-	ast_verb(3, "Hungup '%s'\n", ast->name);
+	ast_verb(3, "Hungup '%s'\n", ast_channel_name(ast));
 	ast_channel_tech_pvt(ast) = NULL;
 	brcm_close_connection(sub);
 	//ast_mutex_unlock(&p->lock);
@@ -829,14 +829,14 @@ static int brcm_hangup(struct ast_channel *ast)
 
 static int brcm_answer(struct ast_channel *ast)
 {
-	ast_debug(1, "brcm_answer(%s)\n", ast->name);
+	ast_debug(1, "brcm_answer(%s)\n", ast_channel_name(ast));
 
 	struct brcm_subchannel *sub = ast_channel_tech_pvt(ast);
 	pvt_lock(sub->parent, "BRCM answer");
 	//ast_mutex_lock(&sub->parent->lock);
 	if (ast_channel_state(ast) != AST_STATE_UP) {
 		ast_setstate(ast, AST_STATE_UP);
-		ast_debug(2, "brcm_answer(%s) set state to up\n", ast->name);
+		ast_debug(2, "brcm_answer(%s) set state to up\n", ast_channel_name(ast));
 	}
 	ast->rings = 0;
 	brcm_subchannel_set_state(sub, INCALL);
