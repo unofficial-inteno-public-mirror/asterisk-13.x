@@ -66,6 +66,9 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 284597 $")
 #include "asterisk/manager.h"
 #include "asterisk/sched.h"
 #include "asterisk/app.h"
+#include "asterisk/format_cap.h"
+#include "asterisk/format_compatibility.h"
+#include "asterisk/logger.h"
 
 #include "chan_brcm.h"
 #include "chan_brcm_dect.h"
@@ -120,7 +123,7 @@ static int num_dect_endpoints = -1;
 static int num_endpoints = -1;
 static int endpoint_fd = NOT_INITIALIZED;
 static int clip = 1; // Caller ID presentation
-static const format_t default_capability = AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G729A | AST_FORMAT_G726 | AST_FORMAT_G722; // AST_FORMAT_G723_1 breaks stuff
+//static const struct ast_format_cap default_capability = AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G729A | AST_FORMAT_G726 | AST_FORMAT_G722; // AST_FORMAT_G723_1 breaks stuff
 struct ast_sched_thread *sched; //Scheduling thread
 static int pcmShimFile = -1;
 
@@ -138,8 +141,15 @@ static int hfmaxdelay = DEFAULT_MAX_HOOKFLASH_DELAY;
 /* Automatic call on hold hangup */
 static int onholdhanguptimeout = DEFAULT_ONHOLD_HANGUP_TIMEOUT;
 
-/* Global jitterbuffer configuration */
-static struct ast_jb_conf global_jbconf;
+/* Global jitterbuffer configuration - by default, jb is disabled */
+static struct ast_jb_conf default_jbconf =
+{
+	.flags = 0,
+	.max_size = -1,
+	.resync_threshold = -1,
+	.impl = "",
+	.target_extra = -1,
+};
 
 //TODO change AST_MAX_EXTENSION to something shorter
 /* Structure for feature access codes */
@@ -251,7 +261,7 @@ static char *state2str(enum channel_state state);
 static const struct ast_channel_tech brcm_tech = {
 	.type = "BRCM",
 	.description = tdesc,
-	.capabilities = AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G729A | AST_FORMAT_G726 | AST_FORMAT_G723_1 | AST_FORMAT_G722,
+	.capabilities = AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G726 | AST_FORMAT_G722,
 	.requester = brcm_request,			//No lock held (no channel yet)
 	.call = brcm_call,				//Channel is locked
 	.hangup = brcm_hangup,				//Channel is locked
@@ -259,7 +269,6 @@ static const struct ast_channel_tech brcm_tech = {
 	.read = brcm_read,				//Channel is locked
 	.write = brcm_write,				//Channel is locked
 	.send_digit_begin = brcm_senddigit_begin,	//Channel is NOT locked
-	.send_digit_continue = brcm_senddigit_continue,	//Channel is NOT locked
 	.send_digit_end = brcm_senddigit_end,		//Channel is NOT locked
 	.indicate = brcm_indicate,			//Channel is locked
 };
@@ -327,7 +336,7 @@ static int pvt_unlock_silent(struct brcm_pvt *pvt)
 
 static int brcm_indicate(struct ast_channel *ast, int condition, const void *data, size_t datalen)
 {
-	struct brcm_subchannel *sub = ast->tech_pvt;
+	struct brcm_subchannel *sub = ast_channel_tech_pvt(ast);
 	int res = 0;
 	pvt_lock(sub->parent, "indicate");
 	//ast_mutex_lock(&sub->parent->lock);
@@ -354,9 +363,9 @@ static int brcm_indicate(struct ast_channel *ast, int condition, const void *dat
 		}
 		break;
 	case AST_CONTROL_CONGESTION:
-		ast_debug(4, "Got CONGESTION on %s\n", ast->name);
+		ast_debug(4, "Got CONGESTION on %s\n", ast_channel_name(ast));
 		/* The other end is out of network resources */
-		if (ast->_state != AST_STATE_UP) {
+		if (ast_channel_state(ast) != AST_STATE_UP) {
 			/* If state is UP, we can't do anything */
 			ast_softhangup_nolock(ast, AST_SOFTHANGUP_DEV);
 			brcm_hangup(ast);
@@ -365,15 +374,15 @@ static int brcm_indicate(struct ast_channel *ast, int condition, const void *dat
 		res = -1;
 		break;
 	case AST_CONTROL_CONNECTED_LINE:
-		ast_debug(4, "Got CONNECTED LINE UPDATE on %s\n", ast->name);
+		ast_debug(4, "Got CONNECTED LINE UPDATE on %s\n", ast_channel_name(ast));
 		/* Update caller IDs on display - dect ? */
 		res = -1;
 		break;
 
 	case AST_CONTROL_BUSY:
-		ast_debug(4, "Got BUSY on %s\n", ast->name);
+		ast_debug(4, "Got BUSY on %s\n", ast_channel_name(ast));
 		/* The other end is busy */
-		if (ast->_state != AST_STATE_UP) {
+		if (ast_channel_state(ast) != AST_STATE_UP) {
 			/* XXX We should play a busy tone here!! */
 			ast_softhangup_nolock(ast, AST_SOFTHANGUP_DEV);
 			brcm_hangup(ast);
@@ -382,7 +391,7 @@ static int brcm_indicate(struct ast_channel *ast, int condition, const void *dat
 		res = -1;
 		break;
 	case AST_CONTROL_PROGRESS:
-		ast_debug(4, "Got PROGRESS on %s\n", ast->name);
+		ast_debug(4, "Got PROGRESS on %s\n", ast_channel_name(ast));
 		/* Early media is coming our way */
 		/* What do we do with that? */
 		res = -1;
@@ -486,7 +495,7 @@ static int brcm_send_dtmf(struct ast_channel *ast, char digit, unsigned int dura
 	struct brcm_subchannel *sub = ast->tech_pvt;
    	UINT8 pdata[PACKET_BUFFER_SIZE] = {0};
 
-	if (ast->_state != AST_STATE_UP && ast->_state != AST_STATE_RING) {
+	if (ast_channel_state(ast) != AST_STATE_UP && ast_channel_state(ast) != AST_STATE_RING) {
 		/* Silently ignore packets until channel is up */
 		ast_debug(5, "error: channel not up\n");
 		return 0;
@@ -825,7 +834,7 @@ static int brcm_answer(struct ast_channel *ast)
 	struct brcm_subchannel *sub = ast->tech_pvt;
 	pvt_lock(sub->parent, "BRCM answer");
 	//ast_mutex_lock(&sub->parent->lock);
-	if (ast->_state != AST_STATE_UP) {
+	if (ast_channel_state(ast) != AST_STATE_UP) {
 		ast_setstate(ast, AST_STATE_UP);
 		ast_debug(2, "brcm_answer(%s) set state to up\n", ast->name);
 	}
@@ -906,7 +915,7 @@ static int map_ast_codec_id_to_rtp(int id) {
 /*
 * Map brcm codec enum to asterisk codec enum
 */
-static format_t map_codec_brcm_to_ast(int id) {
+static ast_format map_codec_brcm_to_ast(int id) {
 	switch (id) {
 		case CODEC_PCMU:		return AST_FORMAT_ULAW;
 		case CODEC_PCMA:		return AST_FORMAT_ALAW;
@@ -1008,7 +1017,7 @@ static int brcm_write(struct ast_channel *ast, struct ast_frame *frame)
 	struct brcm_subchannel *sub = ast->tech_pvt;
    	UINT8 packet_buffer[PACKET_BUFFER_SIZE] = {0};
 
-	if (ast->_state != AST_STATE_UP && ast->_state != AST_STATE_RING) {
+	if (ast_channel_state(ast) != AST_STATE_UP && ast_channel_state(ast) != AST_STATE_RING) {
 		/* Silently ignore packets until channel is up */
 		ast_debug(5, "error: channel not up\n");
 		return 0;
@@ -1161,7 +1170,7 @@ int brcm_signal_congestion(struct brcm_pvt *p) {
 	return ovrgEndptSignal( (ENDPT_STATE*)&endptObjState[p->line_id], -1, EPSIG_STUTTER, 1, -1, -1 , -1);
 }
 
-static struct ast_channel *brcm_new(struct brcm_subchannel *i, int state, char *cntx, const char *linkedid, format_t format)
+static struct ast_channel *brcm_new(struct brcm_subchannel *i, int state, char *cntx, const char *linkedid, ast_format_cap *format)
 {
 	struct ast_channel *tmp;
 
@@ -1173,7 +1182,7 @@ static struct ast_channel *brcm_new(struct brcm_subchannel *i, int state, char *
 		/* ast_channel_set_fd(tmp, 0, i->fd); */
 
 		/* find out which codec to use */
-		format_t fmt = format;
+		struct ast_format_cap fmt = format;
 		line_settings *s = &line_config[i->parent->line_id];
 		if (fmt == 0) {
 			tmp->nativeformats = map_codec_brcm_to_ast(s->codec_list[0]);
@@ -2794,7 +2803,7 @@ struct brcm_subchannel *brcm_get_idle_subchannel(const struct brcm_pvt *p)
 	return NULL;
 }
 
-static struct ast_channel *brcm_request(const char *type, format_t format, const struct ast_channel *requestor, void *data, int *cause)
+static struct ast_channel *brcm_request(const char *type, struct ast_format_cap *format, const struct ast_channel *requestor, void *data, int *cause)
 {
 	struct brcm_pvt *p;
 	struct brcm_subchannel *sub;
@@ -2829,7 +2838,7 @@ static struct ast_channel *brcm_request(const char *type, format_t format, const
 	sub = brcm_get_idle_subchannel(p);
 
 	/* Check that the request has an allowed format */
-	format_t allowedformat = format & (AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G729A | AST_FORMAT_G726 | AST_FORMAT_G723_1 | AST_FORMAT_G722);
+	ast_format_cap allowedformat = format & (AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G729A | AST_FORMAT_G726 | AST_FORMAT_G723_1 | AST_FORMAT_G722);
 
 	if (!allowedformat) {
 		ast_log(LOG_NOTICE, "Asked to get a channel of unsupported format %s\n", ast_getformatname(format));
@@ -3546,7 +3555,7 @@ static EPZCNXPARAM brcm_get_epzcnxparam(struct brcm_subchannel *sub)
 	else {
 		//Select our preferred codec. This may result in asterisk transcoding if remote SIP peer doesn't support this codec,
 		//which is of course not optimal in the case where we actually support the negotiated codec.
-		format_t fmt = map_codec_brcm_to_ast(s->codec_list[0]);
+		struct ast_format_cap *fmt = map_codec_brcm_to_ast(s->codec_list[0]);
 
 		epCnxParms.cnxParmList.send.codecs[0].type              = map_codec_ast_to_brcm(fmt);
 		epCnxParms.cnxParmList.send.codecs[0].rtpPayloadType    = map_codec_ast_to_brcm_rtp(fmt);
