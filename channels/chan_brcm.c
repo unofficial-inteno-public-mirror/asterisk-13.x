@@ -701,13 +701,13 @@ static int brcm_call(struct ast_channel *chan, char *dest, int timeout)
 	struct timeval UtcTime = ast_tvnow();
 	struct ast_tm tm;
 
-	sub = chan->tech_pvt;
+	sub = ast_channel_tech_pvt(chan);
 
 	ast_debug(1, "BRCM brcm_call %d\n", sub->parent->line_id);
 	ast_localtime(&UtcTime, &tm, NULL);
 
-	if ((chan->_state != AST_STATE_DOWN) && (chan->_state != AST_STATE_RESERVED)) {
-		ast_log(LOG_WARNING, "brcm_call called on %s, neither down nor reserved\n", chan->name);
+	if ((ast_channel_state(chan) != AST_STATE_DOWN) && (ast_channel_state(chan) != AST_STATE_RESERVED)) {
+		ast_log(LOG_WARNING, "brcm_call called on %s, neither down nor reserved\n", ast_channel_name(chan));
 		return -1;
 	}
 
@@ -765,7 +765,7 @@ static int brcm_hangup(struct ast_channel *ast)
 
 	p = sub->parent;
 	sub_peer = brcm_subchannel_get_peer(sub);
-	ast_debug(1, "brcm_hangup(%s) line_id=%d connection_id=%d\n", ast->name, p->line_id, sub->connection_id);
+	ast_debug(1, "brcm_hangup(%s) line_id=%d connection_id=%d\n", ast_channel_name(ast), p->line_id, sub->connection_id);
 
 	if (sub->channel_state == CALLWAITING) {
 		brcm_stop_callwaiting(p);
