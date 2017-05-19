@@ -492,7 +492,7 @@ static int map_digit_to_rfc2833(char digit) {
 static int brcm_send_dtmf(struct ast_channel *ast, char digit, unsigned int duration, int status) {
 	EPPACKET epPacket_send;
 	ENDPOINTDRV_PACKET_PARM tPacketParm_send;
-	struct brcm_subchannel *sub = ast->tech_pvt;
+	struct brcm_subchannel *sub = ast_channel_tech_pvt(ast);
    	UINT8 pdata[PACKET_BUFFER_SIZE] = {0};
 
 	if (ast_channel_state(ast) != AST_STATE_UP && ast_channel_state(ast) != AST_STATE_RING) {
@@ -566,7 +566,7 @@ static int brcm_senddigit_continue(struct ast_channel *ast, char digit, unsigned
 	struct brcm_subchannel *sub;
 	line_settings* s;
 
-	sub = ast->tech_pvt;
+	sub = ast_channel_tech_pvt(ast);
 	//ast_mutex_lock(&sub->parent->lock);
 	pvt_lock(sub->parent, "DTMF senddigit_begin");
 
@@ -608,7 +608,7 @@ static int brcm_senddigit_begin(struct ast_channel *ast, char digit)
 	struct brcm_subchannel *sub;
 	line_settings* s;
 
-	sub = ast->tech_pvt;
+	sub = ast_channel_tech_pvt(ast);
 	//ast_mutex_lock(&sub->parent->lock);
 	pvt_lock(sub->parent, "DTMF senddigit_begin");
 
@@ -653,7 +653,7 @@ static int brcm_senddigit_end(struct ast_channel *ast, char digit, unsigned int 
 	struct brcm_subchannel *sub;
 	line_settings* s;
 
-	sub = ast->tech_pvt;
+	sub = ast_channel_tech_pvt(ast);
 	//ast_mutex_lock(&sub->parent->lock);
 	pvt_lock(sub->parent, "DTMF senddigit_end");
 
@@ -754,9 +754,9 @@ static int brcm_hangup(struct ast_channel *ast)
 {
 	struct brcm_pvt *p;
 	struct brcm_subchannel *sub, *sub_peer;
-	sub = ast->tech_pvt;
+	sub = ast_channel_tech_pvt(ast);
 
-	if (!ast->tech_pvt) {
+	if (!ast_channel_tech_pvt(ast)) {
 		ast_log(LOG_WARNING, "Asked to hangup channel not connected\n");
 		return 0;
 	}
@@ -818,7 +818,7 @@ static int brcm_hangup(struct ast_channel *ast)
 	sub->cw_rejected = 0;
 	ast_module_unref(ast_module_info->self);
 	ast_verb(3, "Hungup '%s'\n", ast->name);
-	ast->tech_pvt = NULL;
+	ast_channel_tech_pvt(ast) = NULL;
 	brcm_close_connection(sub);
 	//ast_mutex_unlock(&p->lock);
 
@@ -831,7 +831,7 @@ static int brcm_answer(struct ast_channel *ast)
 {
 	ast_debug(1, "brcm_answer(%s)\n", ast->name);
 
-	struct brcm_subchannel *sub = ast->tech_pvt;
+	struct brcm_subchannel *sub = ast_channel_tech_pvt(ast);
 	pvt_lock(sub->parent, "BRCM answer");
 	//ast_mutex_lock(&sub->parent->lock);
 	if (ast_channel_state(ast) != AST_STATE_UP) {
@@ -1014,7 +1014,7 @@ static int brcm_write(struct ast_channel *ast, struct ast_frame *frame)
 {
 	EPPACKET epPacket_send;
 	ENDPOINTDRV_PACKET_PARM tPacketParm_send;
-	struct brcm_subchannel *sub = ast->tech_pvt;
+	struct brcm_subchannel *sub = ast_channel_tech_pvt(ast);
    	UINT8 packet_buffer[PACKET_BUFFER_SIZE] = {0};
 
 	if (ast_channel_state(ast) != AST_STATE_UP && ast_channel_state(ast) != AST_STATE_RING) {
