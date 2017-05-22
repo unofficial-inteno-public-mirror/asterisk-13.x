@@ -124,7 +124,8 @@ static int num_dect_endpoints = -1;
 static int num_endpoints = -1;
 static int endpoint_fd = NOT_INITIALIZED;
 static int clip = 1; // Caller ID presentation
-struct ast_sched_thread *sched; //Scheduling thread
+/* driver scheduler */
+static struct ast_sched_context *sched = NULL;
 static int pcmShimFile = -1;
 
 /* Call waiting */
@@ -449,7 +450,7 @@ static int brcm_finish_transfer(struct ast_channel *owner, struct brcm_subchanne
 	} else if (peer_sub->channel_state == ONHOLD) {
 		if (result == AST_TRANSFER_SUCCESS) {
 			ast_log(LOG_NOTICE, "Remote transfer completed successfully, wait for remote hangup\n");
-			p->r4_hangup_timer_id = ast_sched_thread_add(sched, r4hanguptimeout, r4hanguptimeout_cb, p);
+			p->r4_hangup_timer_id = ast_sched_add(sched, r4hanguptimeout, r4hanguptimeout_cb, p);
 		} else {
 			//Do nothing. Let calls be up as they were before R4 was attempted (first call on hold, second call active)
 			ast_log(LOG_NOTICE, "Remote transfer failed\n");
@@ -724,7 +725,7 @@ static int brcm_call(struct ast_channel *chan, const char *dest, int timeout)
 		brcm_subchannel_set_state(sub, CALLWAITING);
 		brcm_signal_callwaiting(p);
 		int cwtimeout_ms = cwtimeout * 1000;
-		sub->cw_timer_id = ast_sched_thread_add(sched, cwtimeout_ms, cwtimeout_cb, sub);
+		sub->cw_timer_id = ast_sched_add(sched, cwtimeout_ms, cwtimeout_cb, sub);
 	  	ast_setstate(chan, AST_STATE_RINGING);
 		ast_queue_control(chan, AST_CONTROL_RINGING);
 	}
@@ -783,21 +784,21 @@ static int brcm_hangup(struct ast_channel *ast)
 	}
 
 	if (sub->cw_timer_id != -1) {
-		if (ast_sched_thread_del(sched, sub->cw_timer_id)) {
+		if (ast_sched_del(sched, sub->cw_timer_id)) {
 			ast_log(LOG_WARNING, "Failed to remove scheduled call waiting timer\n");
 		}
 		sub->cw_timer_id = -1;
 	}
 
 	if(sub->r4_hangup_timer_id != -1) {
-		if (ast_sched_thread_del(sched, sub->r4_hangup_timer_id)) {
+		if (ast_sched_del(sched, sub->r4_hangup_timer_id)) {
 			ast_log(LOG_WARNING, "Failed to remove scheduled r4 hangup timer\n");
 		}
 		sub->r4_hangup_timer_id = -1;
 	}
 
 	if(sub->onhold_hangup_timer_id != -1) {
-		if (ast_sched_thread_del(sched, sub->onhold_hangup_timer_id)) {
+		if (ast_sched_del(sched, sub->onhold_hangup_timer_id)) {
 			ast_log(LOG_WARNING, "Failed to remove scheduled onhold hangup timer\n");
 		}
 		sub->onhold_hangup_timer_id = -1;
@@ -1607,7 +1608,7 @@ void handle_dtmf_calling(struct brcm_subchannel *sub)
 		//No matches. We schedule a (new) interdigit timeout to occur
 		int timeoutmsec = line_config[p->line_id].timeoutmsec;
 		ast_debug(9, "Scheduling new interdigit timeout in %d msec\n", timeoutmsec);
-		p->interdigit_timer_id = ast_sched_thread_add(sched, timeoutmsec, handle_interdigit_timeout, p);
+		p->interdigit_timer_id = ast_sched_add(sched, timeoutmsec, handle_interdigit_timeout, p);
 	}
 }
 
@@ -1720,7 +1721,7 @@ void handle_hookflash(struct brcm_subchannel *sub, struct brcm_subchannel *sub_p
 				/* Immediately send busy next time someone calls us during this call */
 				sub->cw_rejected = 1;
 
-				if (ast_sched_thread_del(sched, sub_peer->cw_timer_id)) {
+				if (ast_sched_del(sched, sub_peer->cw_timer_id)) {
 					ast_log(LOG_WARNING, "Failed to remove scheduled call waiting timer\n");
 				}
 				sub_peer->cw_timer_id = -1;
@@ -1754,7 +1755,7 @@ void handle_hookflash(struct brcm_subchannel *sub, struct brcm_subchannel *sub_p
 					/* Stop call waiting tone on current call */
 					brcm_stop_callwaiting(p);
 
-					if (ast_sched_thread_del(sched, sub_peer->cw_timer_id)) {
+					if (ast_sched_del(sched, sub_peer->cw_timer_id)) {
 						ast_log(LOG_WARNING, "Failed to remove scheduled call waiting timer\n");
 					}
 					sub_peer->cw_timer_id = -1;
@@ -1803,7 +1804,7 @@ void handle_hookflash(struct brcm_subchannel *sub, struct brcm_subchannel *sub_p
 					brcm_stop_callwaiting(p);
 
 					/* Cancel timer */
-					if (ast_sched_thread_del(sched, sub_peer->cw_timer_id)) {
+					if (ast_sched_del(sched, sub_peer->cw_timer_id)) {
 						ast_log(LOG_WARNING, "Failed to remove scheduled call waiting timer\n");
 					}
 					sub_peer->cw_timer_id = -1;
@@ -2212,17 +2213,17 @@ void brcm_cancel_dialing_timeouts(struct brcm_pvt *p)
 {
 	//If we have interdigit timeout, cancel it
 	if (p->interdigit_timer_id > 0) {
-		p->interdigit_timer_id = ast_sched_thread_del(sched, p->interdigit_timer_id);
+		p->interdigit_timer_id = ast_sched_del(sched, p->interdigit_timer_id);
 	}
 
 	//If we have a autodial timeout, cancel it
 	if (p->autodial_timer_id > 0) {
-		p->autodial_timer_id = ast_sched_thread_del(sched, p->autodial_timer_id);
+		p->autodial_timer_id = ast_sched_del(sched, p->autodial_timer_id);
 	}
 
 	//If we have a dialtone timeout, cancel it
 	if (p->dialtone_timeout_timer_id > 0) {
-		p->dialtone_timeout_timer_id = ast_sched_thread_del(sched, p->dialtone_timeout_timer_id);
+		p->dialtone_timeout_timer_id = ast_sched_del(sched, p->dialtone_timeout_timer_id);
 	}
 }
 
@@ -2329,7 +2330,7 @@ static void *brcm_monitor_events(void *data)
 
 						if (sub->cw_timer_id > -1) {
 							/* Picking up during reminder ringing for call waiting */
-							ast_sched_thread_del(sched, sub->cw_timer_id);
+							ast_sched_del(sched, sub->cw_timer_id);
 							sub->cw_timer_id = -1;
 						}
 
@@ -2339,7 +2340,7 @@ static void *brcm_monitor_events(void *data)
 					else if (sub_peer->channel_state == ONHOLD) {
 
 						/* Picking up during reminder ringing for call on hold */
-						ast_sched_thread_del(sched, sub_peer->onhold_hangup_timer_id);
+						ast_sched_del(sched, sub_peer->onhold_hangup_timer_id);
 						sub_peer->onhold_hangup_timer_id = -1;
 
 						//Asterisk jitter buffer causes one way audio when going from unhold.
@@ -2359,11 +2360,11 @@ static void *brcm_monitor_events(void *data)
 
 						if (ast_str_size(s->autodial_ext)) {
 							/* Schedule autodial timeout if autodial extension is set */
-							p->autodial_timer_id = ast_sched_thread_add(sched, s->autodial_timeoutmsec, handle_autodial_timeout, p);
+							p->autodial_timer_id = ast_sched_add(sched, s->autodial_timeoutmsec, handle_autodial_timeout, p);
 						}
 						else {
 							/* No autodial, schedule dialtone timeout */
-							p->dialtone_timeout_timer_id = ast_sched_thread_add(sched, s->dialtone_timeoutmsec, handle_dialtone_timeout, p);
+							p->dialtone_timeout_timer_id = ast_sched_add(sched, s->dialtone_timeoutmsec, handle_dialtone_timeout, p);
 						}
 					}
 					break;
@@ -2422,7 +2423,7 @@ static void *brcm_monitor_events(void *data)
 						}
 					else if (sub_peer->channel_state == ONHOLD) {
 						/* Remind user of call on hold */
-						sub_peer->onhold_hangup_timer_id = ast_sched_thread_add(sched, onholdhanguptimeout * 1000, onholdhanguptimeout_cb, sub_peer);
+						sub_peer->onhold_hangup_timer_id = ast_sched_add(sched, onholdhanguptimeout * 1000, onholdhanguptimeout_cb, sub_peer);
 						p->tech->signal_ringing(p); //TODO: This should use CCSS "ringing signal"
 					}
 					else if (peer_owner && sub_peer->channel_state != TRANSFERING) {
@@ -2477,7 +2478,7 @@ static void *brcm_monitor_events(void *data)
 					/* Schedule hook flash timeout. Until hook flash is handled or timeout expires, no
 					 * dtmf will be relayed to asterisk. */
 					int timeoutmsec = line_config[p->line_id].timeoutmsec;
-					p->interdigit_timer_id = ast_sched_thread_add(sched, timeoutmsec, handle_hookflash_timeout, p);
+					p->interdigit_timer_id = ast_sched_add(sched, timeoutmsec, handle_hookflash_timeout, p);
 
 					handle_hookflash(sub, sub_peer, owner, peer_owner);
 #endif
@@ -2497,7 +2498,7 @@ static void *brcm_monitor_events(void *data)
 							/* Schedule hook flash timeout. Until hook flash is handled or timeout expires, no
 							 * dtmf will be relayed to asterisk. */
 							int timeoutmsec = line_config[p->line_id].timeoutmsec;
-							p->interdigit_timer_id = ast_sched_thread_add(sched, timeoutmsec, handle_hookflash_timeout, p);
+							p->interdigit_timer_id = ast_sched_add(sched, timeoutmsec, handle_hookflash_timeout, p);
 
 							handle_hookflash(sub, sub_peer, owner, peer_owner);
 						}
@@ -3533,7 +3534,7 @@ static int unload_module(void)
 	endpt_deinit();
 	ast_debug(3, "Endpoint deinited...\n");
 
-	ast_sched_thread_destroy(sched);
+	ast_sched_destroy(sched);
 
 	return 0;
 }
@@ -3942,7 +3943,7 @@ static int load_module(void)
 	}
 
 	/* Setup scheduler thread */
-	if (!(sched = ast_sched_thread_create())) {
+	if (!(sched = ast_sched_create())) {
 		ast_log(LOG_ERROR, "Unable to create scheduler thread/context. Aborting.\n");
 		goto err;
 	}
@@ -4822,7 +4823,7 @@ static void brcm_dialtone_init(struct brcm_pvt *p)
 
 	if (!ast_test_flag(&ast_options, AST_OPT_FLAG_FULLY_BOOTED)) {
 		/* Asterisk is not fully booted, wait for dialplan hints to be read */
-		ast_sched_thread_add(sched, 500, dialtone_init_cb, p);
+		ast_sched_add(sched, 500, dialtone_init_cb, p);
 		/* No need to store id */
 		return;
 	}
