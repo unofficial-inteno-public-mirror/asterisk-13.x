@@ -693,7 +693,7 @@ static int brcm_senddigit_end(struct ast_channel *ast, char digit, unsigned int 
 }
 
 
-static int brcm_call(struct ast_channel *chan, char *dest, int timeout)
+static int brcm_call(struct ast_channel *chan, const char *dest, int timeout)
 {
 	struct brcm_pvt *p;
 	struct brcm_subchannel *sub;

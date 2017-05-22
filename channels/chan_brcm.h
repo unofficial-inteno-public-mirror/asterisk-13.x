@@ -8,6 +8,7 @@
 #include <endpointdrv.h>
 #include <pcmshimdrv.h>
 #include <bcm_sdk_version.h>
+#include "asterisk/format_cap.h"
 
 /* Change this value when needed */
 #define CHANNEL_VERSION "1.2"
@@ -117,8 +118,8 @@ struct brcm_pvt {
 	char dtmfbuf[AST_MAX_EXTENSION];/* DTMF buffer per channel */
 	int dtmf_len;					/* Length of DTMF buffer */
 	int dtmf_first;					/* DTMF control state, button pushes generate 2 events, one on button down and one on button up */
-	format_t lastformat;            /* Last output format */
-	format_t lastinput;             /* Last input format */
+	struct ast_format_cap * lastformat;            /* Last output format */
+	struct ast_format_cap * lastinput;             /* Last input format */
 	struct brcm_pvt *next;			/* Next channel in list */
 	char offset[AST_FRIENDLY_OFFSET];
 	char buf[PHONE_MAX_BUF];					/* Static buffer for reading frames */
@@ -215,7 +216,7 @@ typedef struct {
 	int dtmf_compatibility;
 	int codec_list[6];
 	int codec_nr;
-	format_t capability;
+	struct ast_format_cap *capability;
 	int rtp_payload_list[6];
 	int ringsignal;
 	int timeoutmsec;
@@ -243,17 +244,6 @@ typedef struct CLID_STRING
 	char date[CLID_MAX_DATE];
 	char number_name[CLID_MAX_NUMBER + CLID_MAX_NAME + 4]; // 4 = comma, quotation marks and null terminator
 } CLID_STRING;
-
-
-/* Global jitterbuffer configuration - by default, jb is disabled */
-static struct ast_jb_conf default_jbconf =
-{
-	.flags = 0,
-	.max_size = -1,
-	.resync_threshold = -1,
-	.impl = "",
-	.target_extra = -1,
-};
 
 
 #define DEFAULT_CALL_WAITING_TIMEOUT 24 // In seconds, Telia uses 24s
@@ -287,8 +277,8 @@ int endpt_init(void);
 int endpt_deinit(void);
 void event_loop(void);
 static int restart_monitor(void);
-static struct ast_channel *brcm_request(const char *type, format_t format, const struct ast_channel *requestor, void *data, int *cause);
-static int brcm_call(struct ast_channel *ast, char *dest, int timeout);
+static struct ast_channel *brcm_request(const char *type, struct ast_format_cap *cap, const struct ast_assigned_ids *assignedids, const struct ast_channel *requestor, const char *dest, int *cause);
+static int brcm_call(struct ast_channel *ast, const char *dest, int timeout);
 static int brcm_hangup(struct ast_channel *ast);
 static int brcm_answer(struct ast_channel *ast);
 static struct ast_frame *brcm_read(struct ast_channel *ast);
