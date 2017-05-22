@@ -124,7 +124,6 @@ static int num_dect_endpoints = -1;
 static int num_endpoints = -1;
 static int endpoint_fd = NOT_INITIALIZED;
 static int clip = 1; // Caller ID presentation
-//static const struct ast_format_cap default_capability = AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G729 | AST_FORMAT_G726 | AST_FORMAT_G722; // AST_FORMAT_G723 breaks stuff
 struct ast_sched_thread *sched; //Scheduling thread
 static int pcmShimFile = -1;
 
@@ -254,6 +253,8 @@ AST_MUTEX_DEFINE_STATIC(iflock);
 AST_MUTEX_DEFINE_STATIC(monlock);
 AST_MUTEX_DEFINE_STATIC(ioctl_lock);
 
+static struct ast_format_cap *default_cap;
+
 static int load_settings(struct ast_config **cfg);
 static void load_endpoint_settings(struct ast_config *cfg);
 static char *state2str(enum channel_state state);
@@ -262,7 +263,6 @@ static char *state2str(enum channel_state state);
 static const struct ast_channel_tech brcm_tech = {
 	.type = "BRCM",
 	.description = tdesc,
-	.capabilities = AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G726 | AST_FORMAT_G722,
 	.requester = brcm_request,			//No lock held (no channel yet)
 	.call = brcm_call,				//Channel is locked
 	.hangup = brcm_hangup,				//Channel is locked
@@ -3629,7 +3629,6 @@ static line_settings line_settings_create(void)
 		.codec_list = {CODEC_PCMA, CODEC_PCMU, -1, -1, -1, -1},
 		.codec_nr = 2,
 		.rtp_payload_list = {RTP_PAYLOAD_PCMA, RTP_PAYLOAD_PCMU, -1, -1, -1, -1},
-		.capability = default_capability,
 		.ringsignal = 1,
 		.timeoutmsec = 4000,
 		.autodial_timeoutmsec = 60000,
@@ -3925,6 +3924,14 @@ static int load_module(void)
 	struct ast_config *cfg;
 	int result;
 
+
+	if (!(default_cap = ast_format_cap_alloc(AST_FORMAT_CAP_FLAG_DEFAULT))) {
+		return AST_MODULE_LOAD_DECLINE;
+	}
+
+	ast_format_cap_append(default_cap, ast_format_ulaw, 0);
+	ast_format_cap_append(default_cap, ast_format_alaw, 0);
+	
 	// In case the asterisk module crashes the endpoint driver needs a restart to function properly
 	vrgEndptDriverOpen();
 	if (isEndptInitialized()) {
@@ -3935,20 +3942,20 @@ static int load_module(void)
 	/* Setup scheduler thread */
 	if (!(sched = ast_sched_thread_create())) {
 		ast_log(LOG_ERROR, "Unable to create scheduler thread/context. Aborting.\n");
-		return AST_MODULE_LOAD_FAILURE;
+		goto err;
 	}
 
 	if (ast_mutex_lock(&iflock)) {
 		/* It's a little silly to lock it, but we mind as well just to be sure */
 		ast_log(LOG_ERROR, "Unable to lock interface list???\n");
-		return AST_MODULE_LOAD_FAILURE;
+		goto err;
 	}
 
 	/* Load settings file and read default section */
 	if ((result = load_settings(&cfg)) != 0) {
-		return result;
+		goto err;
 	}
-
+	
 #if BCM_SDK_VERSION >= 416021
 	/* Set the provision data to the endpoint driver */
 	char config_cmd[32];
@@ -3958,7 +3965,7 @@ static int load_module(void)
 
 	/* Initialize the endpoints */
 	if (endpt_init()) {
-		return AST_MODULE_LOAD_FAILURE;
+		goto err;		
 	}
 
 	brcm_get_endpoints_count();
@@ -3976,7 +3983,7 @@ static int load_module(void)
 		ast_log(LOG_ERROR, "endpoint_fd = %x\n",endpoint_fd);
 		ast_config_destroy(cfg);
 		unload_module();
-		return AST_MODULE_LOAD_FAILURE;
+		goto err;
 	}
 
 	/* Register all CLI functions for BRCM */
@@ -3995,6 +4002,10 @@ static int load_module(void)
 	ast_debug(3, "BRCM init done\n");
 
 	return AST_MODULE_LOAD_SUCCESS;
+
+ err:
+	ao2_ref(default_cap, -1);
+	return AST_MODULE_LOAD_FAILURE;
 }
 
 
