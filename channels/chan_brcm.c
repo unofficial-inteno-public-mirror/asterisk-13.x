@@ -897,21 +897,26 @@ static int brcm_classify_rtp_packet(int id) {
 	}
 }
 
-static int map_ast_codec_id_to_rtp(int id) {
-	switch (id) {
-		case AST_FORMAT_ULAW: return PCMU;
-		case AST_FORMAT_G726: return G726;
-		case AST_FORMAT_G723: return G723;
-		case AST_FORMAT_ALAW: return PCMA;
-		case AST_FORMAT_G729: return G729;
-		case AST_FORMAT_G722: return G722;
-		default:
-		{
-			ast_verbose("Unknown asterisk format/codec id [%d]\n", id);
-			return PCMA;
-		}
+static int map_ast_codec_id_to_rtp(const struct ast_format *astcodec)
+{
+	if (ast_format_cmp(astcodec, ast_format_alaw) == AST_FORMAT_CMP_EQUAL) {
+		return PCMA;
+	} else if (ast_format_cmp(astcodec, ast_format_ulaw) == AST_FORMAT_CMP_EQUAL) {
+		return PCMU;
+	} else if (ast_format_cmp(astcodec, ast_format_g722) == AST_FORMAT_CMP_EQUAL) {
+		return G722;
+	} else if (ast_format_cmp(astcodec, ast_format_g723) == AST_FORMAT_CMP_EQUAL) {
+		return G723;
+	} else if (ast_format_cmp(astcodec, ast_format_g729) == AST_FORMAT_CMP_EQUAL) {
+		return G729;
+	} else if (ast_format_cmp(astcodec, ast_format_g726) == AST_FORMAT_CMP_EQUAL) {
+		return G726;
+	} else {
+		ast_verbose("Unknown asterisk format/codec id\n");
+		return PCMA;
 	}
 }
+
 
 /*
 * Map brcm codec enum to asterisk codec enum
@@ -1044,10 +1049,10 @@ static int brcm_write(struct ast_channel *ast, struct ast_frame *frame)
 		pvt_lock(sub->parent, "BRCM write frame");
 
 		/* generate the rtp header */
-		brcm_generate_rtp_packet(sub, epPacket_send.packetp, map_ast_codec_id_to_rtp(frame->subclass.codec), 0, 0);
+		brcm_generate_rtp_packet(sub, epPacket_send.packetp, map_ast_codec_id_to_rtp(frame->subclass.format), 0, 0);
 
 		/* set rtp id sent to endpoint */
-		sub->codec = map_ast_codec_id_to_rtp(frame->subclass.codec);
+		sub->codec = map_ast_codec_id_to_rtp(frame->subclass.format);
 
 		tPacketParm_send.cnxId       = sub->connection_id;
 		tPacketParm_send.state       = (ENDPT_STATE*)&endptObjState[sub->parent->line_id];
