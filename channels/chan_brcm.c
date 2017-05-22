@@ -805,8 +805,8 @@ static int brcm_hangup(struct ast_channel *ast)
 	}
 	ast_setstate(ast, AST_STATE_DOWN);
 
-	p->lastformat = -1;
-	p->lastinput = -1;
+	p->lastformat = NULL;
+	p->lastinput = NULL;
 	p->hf_detected = 0;
 	if (brcm_in_conference(p)) {
 		/* Switch still active call leg out of conference mode */
