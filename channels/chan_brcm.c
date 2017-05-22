@@ -68,6 +68,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: 284597 $")
 #include "asterisk/app.h"
 #include "asterisk/format_cap.h"
 #include "asterisk/format_compatibility.h"
+#include "asterisk/format_cache.h"
 #include "asterisk/logger.h"
 
 #include "chan_brcm.h"
@@ -915,16 +916,16 @@ static int map_ast_codec_id_to_rtp(int id) {
 /*
 * Map brcm codec enum to asterisk codec enum
 */
-static ast_format map_codec_brcm_to_ast(int id) {
+static struct ast_format *map_codec_brcm_to_ast(int id) {
 	switch (id) {
-		case CODEC_PCMU:		return AST_FORMAT_ULAW;
-		case CODEC_PCMA:		return AST_FORMAT_ALAW;
-		case CODEC_G7231_53:	return AST_FORMAT_G723;
-		case CODEC_G7231_63:	return AST_FORMAT_G723;
-		case CODEC_G726_32:		return AST_FORMAT_G726;
-		case CODEC_G729A:		return AST_FORMAT_G729;
-		case CODEC_G722_MODE_1:	return AST_FORMAT_G722;
-		default:				return -1;
+	case CODEC_PCMU:		return ast_format_ulaw;
+	case CODEC_PCMA:		return ast_format_alaw;
+	case CODEC_G7231_53:	return ast_format_g723;
+	case CODEC_G7231_63:	return ast_format_g723;
+	case CODEC_G726_32:		return ast_format_g726;
+	case CODEC_G729A:		return ast_format_g729;
+	case CODEC_G722_MODE_1:	return ast_format_g722;
+	default:				return -1;
 	}
 }
 
@@ -1170,7 +1171,7 @@ int brcm_signal_congestion(struct brcm_pvt *p) {
 	return ovrgEndptSignal( (ENDPT_STATE*)&endptObjState[p->line_id], -1, EPSIG_STUTTER, 1, -1, -1 , -1);
 }
 
-static struct ast_channel *brcm_new(struct brcm_subchannel *i, int state, char *cntx, const char *linkedid, ast_format_cap *format)
+static struct ast_channel *brcm_new(struct brcm_subchannel *i, int state, char *cntx, const char *linkedid, struct ast_format_cap *format)
 {
 	struct ast_channel *tmp;
 
