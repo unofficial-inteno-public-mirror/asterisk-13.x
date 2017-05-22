@@ -930,7 +930,7 @@ static struct ast_format *map_codec_brcm_to_ast(int id) {
 	case CODEC_G726_32:		return ast_format_g726;
 	case CODEC_G729A:		return ast_format_g729;
 	case CODEC_G722_MODE_1:	return ast_format_g722;
-	default:				return -1;
+	default:				return NULL;
 	}
 }
 
