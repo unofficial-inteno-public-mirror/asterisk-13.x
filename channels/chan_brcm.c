@@ -2809,7 +2809,8 @@ struct brcm_subchannel *brcm_get_idle_subchannel(const struct brcm_pvt *p)
 	return NULL;
 }
 
-static struct ast_channel *brcm_request(const char *type, struct ast_format_cap *format, const struct ast_channel *requestor, void *data, int *cause)
+//static struct ast_channel *brcm_request(const char *type, struct ast_format_cap *format, const struct ast_channel *requestor, void *data, int *cause)
+static struct ast_channel *brcm_request(const char *type, struct ast_format_cap *cap, const struct ast_assigned_ids *assignedids, const struct ast_channel *requestor, const char *dest, int *cause)
 {
 	struct brcm_pvt *p;
 	struct brcm_subchannel *sub;
@@ -2827,7 +2828,7 @@ static struct ast_channel *brcm_request(const char *type, struct ast_format_cap 
 
 	/* Get line id */
 	line_id = atoi((char*)data);
-	ast_debug(1, "brcm_request = %s, line_id=%d, format %x\n", (char*) data, line_id, (unsigned int) format);
+	//ast_debug(1, "brcm_request = %s, line_id=%d, format %x\n", (char*) data, line_id, (unsigned int) format);
 
 	/* Map id to the correct pvt */
 	p = brcm_get_pvt_from_lineid(iflist, line_id);
@@ -2844,8 +2845,9 @@ static struct ast_channel *brcm_request(const char *type, struct ast_format_cap 
 	sub = brcm_get_idle_subchannel(p);
 
 	/* Check that the request has an allowed format */
-	ast_format_cap allowedformat = format & (AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G729 | AST_FORMAT_G726 | AST_FORMAT_G723 | AST_FORMAT_G722);
-
+	//ast_format_cap allowedformat = format & (AST_FORMAT_ALAW | AST_FORMAT_ULAW | AST_FORMAT_G729 | AST_FORMAT_G726 | AST_FORMAT_G723 | AST_FORMAT_G722);
+	allowedformat = true;
+	
 	if (!allowedformat) {
 		ast_log(LOG_NOTICE, "Asked to get a channel of unsupported format %s\n", ast_getformatname(format));
 		*cause = AST_CAUSE_BEARERCAPABILITY_NOTAVAIL;
